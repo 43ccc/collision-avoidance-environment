@@ -1,8 +1,8 @@
-from collisionAvoidanceEnvironment.env.environment import Environment
+from collision_avoidance_environment.env.environment import Environment
 import numpy as np
 
 def main():
-    env = Environment(render_mode='human')
+    env = Environment(config={'render_mode': 'human'})
     env.reset()
 
     for _ in range(60):
