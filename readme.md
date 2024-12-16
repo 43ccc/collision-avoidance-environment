@@ -1,7 +1,7 @@
 # Collision Avoidance Environment
 Basic implementation of a multi agent collision avoidance environment.
 The agents have a goal to reach while avoiding colliding with each other. Number of agents, environment size and more can be set. A fixed state can be selected during the reset of the environment.
-[alt text](image.png)
+<img src="image.png" height=50% width=50%>
 
 ## Environment Config
 a dict contraining one or more of the following keys and corresponding values can be passed as config during environment initilization.
