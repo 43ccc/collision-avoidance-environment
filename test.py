@@ -7,7 +7,7 @@ def main():
     env.reset(options={'agent_state': agent_state})
 
     for _ in range(60):
-        action = {'agent_0': np.array([10,0]), 'agent_1': np.array([10,0])}
+        action = {'agent_0': np.array([0,10]), 'agent_1': np.array([0,10])}
         obs, rew, _, _, info = env.step(action)
         env.render()
 

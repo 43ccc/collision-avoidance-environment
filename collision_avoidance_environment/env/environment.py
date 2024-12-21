@@ -1,17 +1,18 @@
-from pettingzoo import ParallelEnv
+
+import functools
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, Circle
+from copy import copy
 from gymnasium import spaces
 from shapely.geometry import box
-from copy import copy
-import functools
+from pettingzoo import ParallelEnv
 from shapely.affinity import rotate
+from matplotlib.patches import Rectangle, Circle
 from collision_avoidance_environment.config.env_config import base_config
 
 # TODO:
-# - normalization stuff: obs, rew, action
-# - change setting speed to acceleration
+# - put observation space into readme
+# - normalization stuff: obs, rew, action => write a wrapper for this
 # - allow for custom rewards functions
 class Environment(ParallelEnv):
     metadata = {'render_modes': ['human'], 'render_fps': 20,
@@ -31,7 +32,7 @@ class Environment(ParallelEnv):
             }
         )
 
-        self.action_space = spaces.Box(low=np.array([0, -10]), high=np.array([360, 10]), shape=(2,), dtype=np.float32)
+        self.action_space = spaces.Box(low=np.array([0, -1]), high=np.array([360, 2]), shape=(2,), dtype=np.float32)
 
         assert self.config['render_mode'] is None or self.config['render_mode'] in self.metadata['render_modes'], 'Invalid Render Mode'
         self.rendering_initialized = False
@@ -101,9 +102,12 @@ class Environment(ParallelEnv):
 
         return obs, info
 
-    def _clip_agent_state(self, agent_state):
+    def _clip_agent_state(self, agent_state, key_list=None):
+        key_list = key_list if key_list is not None else agent_state.keys()
+
         for key in agent_state:
             agent_state[key] = np.clip(agent_state[key], a_min=self.observation_space[key].low, a_max=self.observation_space[key].high)     
+
 
     def _clip_actions(self, action):
         return np.clip(action, a_min=self.action_space.low, a_max=self.action_space.high)
@@ -112,21 +116,21 @@ class Environment(ParallelEnv):
         for agent_name in self.agents:
             # Extract Actions
             clipped_action = self._clip_actions(action[agent_name])
-            speed = clipped_action[0]
-            direction_change = clipped_action[1]
+            direction_change = clipped_action[0]
+            acceleration = clipped_action[1]
+            
 
             # Update agent state
             agent_state = self.agent_state[agent_name]
-            agent_state['speed'] = np.array(speed)
+            agent_state['speed'] += np.array(acceleration)
             agent_state['direction'] = np.array((agent_state['direction'] + direction_change) % 360)
-            
+            self._clip_agent_state(agent_state, ['speed', 'direction'])
+
             heading = agent_state['direction'] - 90
             dx = agent_state['speed'] * np.cos(np.deg2rad(heading))
             dy = agent_state['speed'] * -np.sin(np.deg2rad(heading))
             agent_state['position'] += np.array([dx.item(), dy.item()])
-
-            # Clip agent state to valid values
-            self._clip_agent_state(agent_state)
+            self._clip_agent_state(agent_state, ['position'])
 
     def _get_agent_hitbox(self, agent_name):
         x, y = self._get_agent_xy(self.agent_state[agent_name]['position'])

@@ -29,5 +29,8 @@ To use a (semi) fixed state the reset function has to be passed a dict of the fo
 ## Base Rewards
 The basic reward function gives a base reward of -0.1 in every step, -1 for causing a collision, +1 for reaching the goal and a value from -0.5 to 0.5 depending on distance traveled towards the goal.
 
+## Action Space
+The actions are passed as a np.array of form [direction change, speed change] for every agent, e.g. {'agent_0': np.array([0,0])}
+
 ## Example
 test.py shows an example of initilizing and running the environment.
