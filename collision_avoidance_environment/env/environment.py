@@ -7,7 +7,7 @@ from gymnasium import spaces
 from shapely.geometry import box
 from pettingzoo import ParallelEnv
 from shapely.affinity import rotate
-from matplotlib.patches import Rectangle, Circle
+from matplotlib.patches import Polygon, Circle
 from collision_avoidance_environment.config.env_config import base_config
 
 # TODO:
@@ -70,16 +70,31 @@ class Environment(ParallelEnv):
 
         return x, y
 
+    def _get_agent_corners(self, agent_name):
+        cx, cy = [value.item() for value in self.agent_state[agent_name]['position']]
+        rad_angle = np.radians(-self.agent_state[agent_name]['direction'].item()) # Adjust for rotation direction
+
+        corners = [
+            (-self.config['agent_width'] / 2, -self.config['agent_length'] / 2),
+            (self.config['agent_width'] / 2, -self.config['agent_length'] / 2),
+            (self.config['agent_width'] / 2, self.config['agent_length'] / 2),
+            (-self.config['agent_width'] / 2, self.config['agent_length'] / 2)
+        ]
+
+        rotated_corners = [(cx + x * np.cos(rad_angle) - y * np.sin(rad_angle), cy + x * np.sin(rad_angle) + y * np.cos(rad_angle)) 
+                        for x, y in corners]
+    
+        return rotated_corners
+
     def _get_target_patch(self, agent_name, idx, radius=5):
         x, y = self.agent_state[agent_name]['target']
 
         return Circle((x,y), radius=radius, facecolor=f'C{idx}')
 
     def _get_agent_patch(self, agent_name, idx):
-        x, y = self._get_agent_xy(self.agent_state[agent_name]['position'])
-
-        return Rectangle((x,y), self.config['agent_width'], self.config['agent_length'], angle=-self.agent_state[agent_name]['direction'], facecolor=f'C{idx}')
-
+        corners = self._get_agent_corners(agent_name)
+        return Polygon(corners, closed=True, facecolor=f'C{idx}')
+    
     def _get_obs(self):
         return {agent_name: {key: self.agent_state[agent_name][key] for key in self.observation_space} for agent_name in self.agents}
     
@@ -118,7 +133,6 @@ class Environment(ParallelEnv):
             clipped_action = self._clip_actions(action[agent_name])
             direction_change = clipped_action[0]
             acceleration = clipped_action[1]
-            
 
             # Update agent state
             agent_state = self.agent_state[agent_name]
@@ -224,9 +238,7 @@ class Environment(ParallelEnv):
                 self.rendering_initialized = True
 
             for agent_name in self.agent_state:
-                agent_state = self.agent_state[agent_name]
-                self.agent_patches[agent_name].set_xy(self._get_agent_xy(agent_state['position']))
-                self.agent_patches[agent_name].set_angle(-agent_state['direction'])
+                self.agent_patches[agent_name].set_xy(self._get_agent_corners(agent_name))
 
             plt.pause(1/self.metadata['render_fps'])
 
