@@ -11,6 +11,7 @@ from matplotlib.patches import Polygon, Circle
 from collision_avoidance_environment.config.env_config import base_config
 
 # TODO:
+# - todo: make sure reset properly handles neighborhood
 # - put observation space into readme
 # - normalization stuff: obs, rew, action => write a wrapper for this
 # - allow for custom rewards functions
@@ -28,7 +29,8 @@ class Environment(ParallelEnv):
                 'position': spaces.Box(0, self.config['environment_size']-1, shape=(2,), dtype=np.float32),
                 'target': spaces.Box(0, self.config['environment_size']-1, shape=(2,), dtype=np.float32),
                 'speed': spaces.Box(-10, 10, shape=(1,), dtype=np.float32),
-                'direction': spaces.Box(0, 360, shape=(1,), dtype=np.float32)
+                'direction': spaces.Box(0, 360, shape=(1,), dtype=np.float32),
+                'neighborhood': spaces.Box(0, 1, shape=(self.config['neighborhood_size'], self.config['neighborhood_size'], 1), dtype=np.float32)
             }
         )
 
@@ -83,7 +85,7 @@ class Environment(ParallelEnv):
 
         rotated_corners = [(cx + x * np.cos(rad_angle) - y * np.sin(rad_angle), cy + x * np.sin(rad_angle) + y * np.cos(rad_angle)) 
                         for x, y in corners]
-    
+
         return rotated_corners
 
     def _get_target_patch(self, agent_name, idx, radius=5):
@@ -100,7 +102,7 @@ class Environment(ParallelEnv):
     
     def _get_info(self):
         return self.agent_info
-    
+
     def reset(self, seed=None, options={}):
         self.agents = copy(self.possible_agents)
         self.timestep = 0
@@ -109,6 +111,12 @@ class Environment(ParallelEnv):
 
         if options.get('agent_state', False):
             self.agent_state.update(options['agent_state'])
+
+        # Overwrite neighborhood with actual neighborhood for every agent
+        raster = self.generate_map_raster()
+
+        for agent_name in self.agents:
+            self.agent_state[agent_name]['neighborhood'] = self._get_neighborhood(agent_name, raster)
 
         self.agent_info = {agent_name: {'distance_to_target': self._get_distance_to_goal(agent_name)} for agent_name in self.agents}
 
@@ -127,7 +135,50 @@ class Environment(ParallelEnv):
     def _clip_actions(self, action):
         return np.clip(action, a_min=self.action_space.low, a_max=self.action_space.high)
 
+    # TODO: consider updaing agent corners first to avoid doing it twice (rendering and here)
+    def generate_map_raster(self):
+        raster = np.zeros(shape=(self.config['environment_size'], self.config['environment_size'], 1), dtype=np.float32)
+
+        for agent_name in self.agents:
+            corners = self._get_agent_corners(agent_name)
+            # TODO: clean this up
+            min_x = int(min(corner[0] for corner in corners))
+            max_x = int(max(corner[0] for corner in corners))
+            min_y = int(min(corner[1] for corner in corners))
+            max_y = int(max(corner[1] for corner in corners))
+
+            polygon = Polygon(corners, closed=True)
+
+            for x in range(min_x, max_x):
+                for y in range(min_y, max_y):
+                    # Check if middle of the cell is within polygon
+                    if polygon.contains_point((x+0.5, y+0.5)):
+                        if x > 0 and x < self.config['environment_size'] and y > 0 and y < self.config['environment_size']:
+                            raster[x, y] = 1
+        return raster
+
+    def _get_neighborhood(self, agent_name, raster):
+        nh_offset = self.config['neighborhood_size'] // 2
+        agent_state = self.agent_state[agent_name]
+        cx = int(agent_state['position'][0])
+        cy = int(agent_state['position'][1])
+
+        neighborhood = np.zeros((self.config['neighborhood_size'], self.config['neighborhood_size'], 1), dtype=np.float32)
+
+        for x_n in range(self.config['neighborhood_size']):
+            for y_n in range(self.config['neighborhood_size']):
+                x = cx - nh_offset + x_n
+                y = cy - nh_offset + y_n
+
+                if x < 0 or x >= self.config['environment_size'] or y < 0 or y >= self.config['environment_size']:
+                    neighborhood[x_n][y_n] = 0.5
+                else:
+                    neighborhood[x_n][y_n] = raster[x][y]
+
+        return neighborhood
+
     def _update_agent_state(self, action):
+        # Update Agent State, except for neighborhood
         for agent_name in self.agents:
             # Extract Actions
             clipped_action = self._clip_actions(action[agent_name])
@@ -145,6 +196,12 @@ class Environment(ParallelEnv):
             dy = agent_state['speed'] * -np.sin(np.deg2rad(heading))
             agent_state['position'] += np.array([dx.item(), dy.item()])
             self._clip_agent_state(agent_state, ['position'])
+
+        # Update neighborhood, now that every ship has moved
+        raster = self.generate_map_raster()
+
+        for agent_name in self.agents:
+            self.agent_state[agent_name]['neighborhood'] = self._get_neighborhood(agent_name, raster)
 
     def _get_agent_hitbox(self, agent_name):
         x, y = self._get_agent_xy(self.agent_state[agent_name]['position'])
