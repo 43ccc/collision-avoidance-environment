@@ -26,8 +26,19 @@ To use a (semi) fixed state the reset function has to be passed a dict of the fo
 | speed | 5 | [-10,10] range for valid values |
 | direction | 0 | Direction the agent faces, [0,360] as valid range |
 
+## Observation Space
+The observation space is returned as a dict, containing another dict for every currently active agent ({'agent_0': observation}). The observation consits of the following:
+| Key | Description |
+|------------------|------------------|------------------|
+| position | [x_pos, y_pos] of the agent|
+| target| [x_pos, y_pos] of the goal |
+| speed | value indicating speed of agent |
+| direction | direction in degrees the agent currently faces |
+| heading_to_target | direction the agent has to face to move towards the target |
+| neighborhood | single channel image showing surroundings of the agent |
+
 ## Base Rewards
-The basic reward function gives a base reward of -0.1 in every step, -1 for causing a collision, +1 for reaching the goal and a value from -0.5 to 0.5 depending on distance traveled towards the goal.
+The basic reward function gives a base reward of -0.1 in every step, -1 for causing a collision, +1 for reaching the goal and a value from -0.5 to 0.5 depending on distance traveled towards the goal. Additionally the agent receives a reward ranging from -0.25 to 0.25 for facing towards the target position.
 
 ## Action Space
 The actions are passed as a np.array of form [direction change, speed change] for every agent, e.g. {'agent_0': np.array([0,0])}

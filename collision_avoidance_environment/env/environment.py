@@ -11,10 +11,8 @@ from matplotlib.patches import Polygon, Circle
 from collision_avoidance_environment.config.env_config import base_config
 
 # TODO:
-# - todo: make sure reset properly handles neighborhood
-# - put observation space into readme
-# - normalization stuff: obs, rew, action => write a wrapper for this
 # - allow for custom rewards functions
+# - heading reward
 class Environment(ParallelEnv):
     metadata = {'render_modes': ['human'], 'render_fps': 20,
                 'name': 'collision_avoidance_environment',}
@@ -30,6 +28,7 @@ class Environment(ParallelEnv):
                 'target': spaces.Box(0, self.config['environment_size']-1, shape=(2,), dtype=np.float32),
                 'speed': spaces.Box(-10, 10, shape=(1,), dtype=np.float32),
                 'direction': spaces.Box(0, 360, shape=(1,), dtype=np.float32),
+                'heading_to_target': spaces.Box(0, 360, shape=(1,), dtype=np.float32),
                 'neighborhood': spaces.Box(0, 1, shape=(self.config['neighborhood_size'], self.config['neighborhood_size'], 1), dtype=np.float32)
             }
         )
@@ -118,6 +117,12 @@ class Environment(ParallelEnv):
         for agent_name in self.agents:
             self.agent_state[agent_name]['neighborhood'] = self._get_neighborhood(agent_name, raster)
 
+        # Overwrite heading_to_target with actual heading
+        for agent_name in self.agents:
+            position = self.agent_state[agent_name]['position']
+            target = self.agent_state[agent_name]['target']
+            self.agent_state[agent_name]['heading_to_target'] = self._calculate_heading(position, target)
+
         self.agent_info = {agent_name: {'distance_to_target': self._get_distance_to_goal(agent_name)} for agent_name in self.agents}
 
         obs = self._get_obs()
@@ -135,13 +140,20 @@ class Environment(ParallelEnv):
     def _clip_actions(self, action):
         return np.clip(action, a_min=self.action_space.low, a_max=self.action_space.high)
 
+    def _calculate_heading(self, position, target):
+        vector_to_target = target - position
+        angle_radians = np.arctan2(vector_to_target[1], vector_to_target[0])
+        angle_degrees = np.degrees(angle_radians)
+        angle_degrees = (90 - angle_degrees) % 360
+    
+        return angle_degrees
+
     # TODO: consider updaing agent corners first to avoid doing it twice (rendering and here)
     def generate_map_raster(self):
         raster = np.zeros(shape=(self.config['environment_size'], self.config['environment_size'], 1), dtype=np.float32)
 
         for agent_name in self.agents:
             corners = self._get_agent_corners(agent_name)
-            # TODO: clean this up
             min_x = int(min(corner[0] for corner in corners))
             max_x = int(max(corner[0] for corner in corners))
             min_y = int(min(corner[1] for corner in corners))
@@ -196,6 +208,10 @@ class Environment(ParallelEnv):
             dy = agent_state['speed'] * -np.sin(np.deg2rad(heading))
             agent_state['position'] += np.array([dx.item(), dy.item()])
             self._clip_agent_state(agent_state, ['position'])
+
+            position = self.agent_state[agent_name]['position']
+            target = self.agent_state[agent_name]['target']
+            self.agent_state[agent_name]['heading_to_target'] = self._calculate_heading(position, target)
 
         # Update neighborhood, now that every ship has moved
         raster = self.generate_map_raster()
@@ -264,6 +280,10 @@ class Environment(ParallelEnv):
                 rewards[agent_name] += 1
             
             rewards[agent_name] += 0.5 * self.agent_info[agent_name]['distance_traveled_towards_target'] / self.observation_space['speed'].high
+
+            cos_similarity = np.cos(np.deg2rad(self.agent_state[agent_name]['direction']) - np.deg2rad(self.agent_state[agent_name]['heading_to_target']))
+            rewards[agent_name] += 0.25 * cos_similarity
+
         return rewards
 
     def _update_agent_list(self, terminations, truncations):
