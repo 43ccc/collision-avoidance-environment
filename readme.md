@@ -29,7 +29,7 @@ To use a (semi) fixed state the reset function has to be passed a dict of the fo
 ## Observation Space
 The observation space is returned as a dict, containing another dict for every currently active agent ({'agent_0': observation}). The observation consits of the following:
 | Key | Description |
-|------------------|------------------|------------------|
+|------------------|------------------|
 | position | [x_pos, y_pos] of the agent|
 | target| [x_pos, y_pos] of the goal |
 | speed | value indicating speed of agent |
